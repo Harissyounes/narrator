@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Narrator</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Narrator"><meta name="theme-color" content="#0e0f12">
+<link rel="icon" id="ico"><link rel="apple-touch-icon" id="aico"><link rel="manifest" id="mani">
+<style>
+:root{--bg:#0e0f12;--p:#17191e;--b:#2a2d35;--t:#e8e6e1;--d:#6b6f78;--a:#d9a441;--r:#e0524a;--g:#4fb37a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font:14px system-ui,sans-serif;height:100vh;display:flex;flex-direction:column}
+header{display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--b);flex-wrap:wrap}
+button,select,input{background:var(--p);color:var(--t);border:1px solid var(--b);border-radius:6px;padding:6px 10px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--a)}button.rec{background:var(--r);border-color:var(--r)}
+main{flex:1;display:flex;min-height:0}#side{width:260px;border-right:1px solid var(--b);overflow:auto}
+#side div{padding:6px 10px;border-bottom:1px solid var(--b);cursor:pointer;font-size:12px;display:flex;gap:6px}
+#side div.cur{background:#22252c}#side .st{width:10px;height:10px;border-radius:50%;background:var(--b);margin-top:3px;flex:none}
+#side .ok .st{background:var(--g)}#stage{flex:1;display:flex;flex-direction:column;padding:30px 50px;overflow:auto}
+#sec{color:var(--a);text-transform:uppercase;letter-spacing:2px;font-size:13px}
+#cur{line-height:1.45;margin:16px 0 30px;max-width:1100px}#nxt{color:var(--d);line-height:1.4;max-width:1100px}
+#takes{margin-top:20px;display:flex;gap:6px;flex-wrap:wrap}#takes span{padding:4px 8px;border:1px solid var(--b);border-radius:6px;cursor:pointer;font-size:12px}
+#takes span.best{border-color:var(--g);color:var(--g)}
+footer{border-top:1px solid var(--b);padding:8px 12px;display:flex;gap:14px;align-items:center;font-size:12px;color:var(--d)}
+#meter{width:220px;height:10px;background:var(--p);border-radius:5px;overflow:hidden}#lvl{height:100%;width:0;background:var(--g)}
+#clip{color:var(--r);font-weight:bold;visibility:hidden}#prog{flex:1;height:6px;background:var(--p);border-radius:3px}#progf{height:100%;background:var(--a);width:0;border-radius:3px}
+#modal{position:fixed;inset:0;background:#000c;display:none;align-items:center;justify-content:center}#modal div{background:var(--p);padding:20px;border-radius:10px;width:min(800px,90vw)}
+textarea{width:100%;height:50vh;background:var(--bg);color:var(--t);border:1px solid var(--b);border-radius:6px;padding:10px;font:14px system-ui}
+#pad{display:none;gap:8px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));border-top:1px solid var(--b);background:var(--bg)}
+#pad button{flex:1;min-height:56px;font-size:16px;touch-action:manipulation}#pad #tRec{flex:2;font-weight:bold}
+#warn{background:#3a2a10;color:var(--a);padding:6px 12px;font-size:12px;display:none}
+@media (pointer:coarse),(max-width:800px){#pad{display:flex}#keys{display:none}#side{display:none}body.list #side{display:block;position:fixed;inset:0 0 140px 0;width:auto;z-index:5;background:var(--bg)}
+ #stage{padding:16px 18px}header{padding:calc(6px + env(safe-area-inset-top)) 8px 6px}header button,header select{padding:8px 10px}
+ footer{flex-wrap:wrap;gap:8px}#meter{width:100%;order:-1;height:14px}#prog{flex-basis:100%}button{min-height:40px}}
+#toast{position:fixed;top:60px;right:20px;background:var(--a);color:#000;padding:10px 14px;border-radius:8px;display:none;max-width:320px}
+.recdot{color:var(--r);font-weight:bold}
+</style></head><body>
+<header>
+<button id="bLoad">Load script</button><input type="file" id="file" accept=".json,.txt,.md" hidden><button id="bFile">Open file</button>
+<label>Mic <select id="dev"></select></label><button id="bMic">Enable mic</button>
+<button id="bTone">Room tone 3s</button>
+<label>Size <input type="range" id="fs" min="20" max="80" value="40"></label>
+<button id="bExp">Export ZIP</button><button id="bClear">Clear session</button>
+<button id="bList" class="mob">List</button><span id="stat"></span>
+</header>
+<div id="warn">iPhone/Safari may delete saved takes if storage is not persistent or the app is unused for a while. Export a ZIP after every session.</div>
+<main><div id="side"></div><div id="stage"><div id="sec"></div><div id="cur">Load a script to begin.</div><div id="nxt"></div><div id="takes"></div></div></main>
+<footer><span id="meter"><div id="lvl"></div></span><span id="db">-inf dB</span><span id="clip">CLIPPING</span>
+<span id="prog"><div id="progf"></div></span><span id="pc">0/0</span><span>Session <b id="tm">00:00</b></span>
+<span id="keys">Space rec/stop · R retake · arrows move · P play · B mark best</span></footer>
+<div id="pad"><button id="tPrev">Prev</button><button id="tRet">Retake</button><button id="tRec" class="">Record</button><button id="tPlay">Play</button><button id="tBest">Best</button><button id="tNext">Next</button></div>
+<div id="modal"><div><p>Paste script. Blank lines split paragraphs. Lines starting with # set the section name. JSON array of {id, section, text} also accepted.</p><textarea id="ta"></textarea><p><button id="bOk">Use script</button> <button id="bCancel">Cancel</button></p></div></div>
+<div id="toast"></div>
+<script>
+const $=id=>document.getElementById(id);
+let paras=[],idx=0,takes={},stream,rec,chunks=[],recStart=0,ctx,an,db,sessStart=Date.now(),lastBreak=Date.now(),player;
+// ---------- IndexedDB ----------
+function openDB(){return new Promise((ok,no)=>{const r=indexedDB.open('narrator',1);r.onupgradeneeded=()=>{r.result.createObjectStore('kv');r.result.createObjectStore('takes',{keyPath:'tid'})};r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+function tx(s,m,f){return new Promise((ok,no)=>{const t=db.transaction(s,m);const st=t.objectStore(s);const r=f(st);t.oncomplete=()=>ok(r&&r.result);t.onerror=()=>no(t.error)})}
+const kvSet=(k,v)=>tx('kv','readwrite',s=>s.put(v,k)),kvGet=k=>tx('kv','readonly',s=>s.get(k));
+function toast(m,ms=4000){const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',ms)}
+// ---------- Script parsing ----------
+function parse(txt){txt=txt.trim();if(txt.startsWith('[')){try{return JSON.parse(txt).map((p,i)=>({id:String(p.id??i+1),section:p.section||'section',text:p.text||''}))}catch(e){toast('Invalid JSON, reading as plain text')}}
+ let sec='intro',out=[];txt.split(/\n\s*\n/).forEach(b=>{b=b.trim();if(!b)return;const lines=b.split('\n');while(lines.length&&/^#/.test(lines[0])){sec=lines.shift().replace(/^#+\s*/,'');}const t=lines.join(' ').trim();if(t)out.push({id:String(out.length+1),section:sec,text:t})});return out}
+async function setScript(p){if(!p.length)return toast('No paragraphs found');if(Object.keys(takes).length&&!confirm('Load new script? Existing takes stay stored but are matched by paragraph id.'))return;paras=p;idx=0;await kvSet('script',paras);await kvSet('idx',0);render()}
+// ---------- Render ----------
+function render(){const s=$('side');s.innerHTML='';paras.forEach((p,i)=>{const d=document.createElement('div');const has=(takes[p.id]||[]).length;d.className=(i==idx?'cur ':'')+(has?'ok':'');d.innerHTML='<span class="st"></span><span>'+(i+1)+'. '+esc(p.text.slice(0,60))+'</span>';d.onclick=()=>{go(i);document.body.classList.remove('list')};s.appendChild(d);if(i==idx)setTimeout(()=>d.scrollIntoView({block:'nearest'}))});
+ const p=paras[idx];if(!p)return;$('sec').textContent=p.section+' · '+(idx+1)+' / '+paras.length;$('cur').textContent=p.text;$('nxt').textContent=paras[idx+1]?paras[idx+1].text:'(end of script)';
+ const fs=+$('fs').value;$('cur').style.fontSize=fs+'px';$('nxt').style.fontSize=Math.round(fs*.55)+'px';
+ const tk=takes[p.id]||[];$('takes').innerHTML=tk.length?'':'<i style="color:var(--d)">Not recorded</i>';tk.forEach((t,i)=>{const e=document.createElement('span');e.className=t.best?'best':'';e.textContent='Take '+(i+1)+' · '+t.dur.toFixed(1)+'s'+(t.best?' · best':'');e.title='Click play, double click mark best';e.onclick=()=>play(t);e.ondblclick=()=>markBest(t);$('takes').appendChild(e)});
+ const done=paras.filter(q=>(takes[q.id]||[]).length).length;$('progf').style.width=(paras.length?done/paras.length*100:0)+'%';$('pc').textContent=done+'/'+paras.length}
+const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function go(i){if(rec&&rec.state=='recording')return toast('Stop recording first');idx=Math.max(0,Math.min(paras.length-1,i));kvSet('idx',idx);render()}
+// ---------- Mic ----------
+async function listDevs(){const d=await navigator.mediaDevices.enumerateDevices();const sel=$('dev'),v=sel.value;sel.innerHTML='';d.filter(x=>x.kind=='audioinput').forEach(x=>{const o=document.createElement('option');o.value=x.deviceId;o.textContent=x.label||'Microphone';sel.appendChild(o)});if(v)sel.value=v}
+async function enableMic(){try{if(stream)stream.getTracks().forEach(t=>t.stop());const id=$('dev').value;
+ stream=await navigator.mediaDevices.getUserMedia({audio:{deviceId:id?{exact:id}:undefined,echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1,sampleRate:48000}});
+ await unlockAudio();const src=ctx.createMediaStreamSource(stream);an=ctx.createAnalyser();an.fftSize=2048;src.connect(an);await listDevs();$('stat').textContent='Mic ready';meter();keepAwake()}catch(e){toast('Mic error: '+e.message)}}
+let clipT=0;function meter(){const b=new Float32Array(an.fftSize);(function f(){an.getFloatTimeDomainData(b);let pk=0,s=0;for(const v of b){const a=Math.abs(v);if(a>pk)pk=a;s+=v*v}const rms=Math.sqrt(s/b.length),dB=20*Math.log10(rms||1e-9),pdb=20*Math.log10(pk||1e-9);
+ $('lvl').style.width=Math.max(0,Math.min(100,(dB+60)/60*100))+'%';$('lvl').style.background=pdb>-3?'var(--r)':pdb>-10?'var(--a)':'var(--g)';$('db').textContent=(dB<-90?'-inf':dB.toFixed(0))+' dB';
+ if(pk>=.98)clipT=Date.now();$('clip').style.visibility=Date.now()-clipT<1500?'visible':'hidden';requestAnimationFrame(f)})()}
+// ---------- Recording ----------
+const isSafari=/^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent)||/iPad|iPhone|iPod/.test(navigator.userAgent);
+function pickMime(){const safari=['audio/mp4;codecs=mp4a.40.2','audio/mp4','audio/aac'],chrome=['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus'];
+ return (isSafari?safari.concat(chrome):chrome.concat(safari)).find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m))||''}
+function setRecUI(on){const b=$('tRec');b.textContent=on?'Stop':'Record';b.className=on?'rec':''}
+let wake=null;async function keepAwake(){try{if('wakeLock' in navigator&&!wake&&document.visibilityState=='visible'){wake=await navigator.wakeLock.request('screen');wake.addEventListener('release',()=>wake=null)}}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='visible'&&stream)keepAwake();else if(rec&&rec.state=='recording')stopRec()});
+async function unlockAudio(){ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();if(ctx.state!='running')try{await ctx.resume()}catch(e){}}
+function startRec(retake){if(!stream)return toast('Enable the mic first');if(!paras.length)return toast('Load a script first');
+ const mt=pickMime();
+ rec=new MediaRecorder(stream,mt?{mimeType:mt,audioBitsPerSecond:256000}:{});chunks=[];rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);rec.onstop=saveTake;rec.start(1000);recStart=Date.now();setRecUI(true);
+ $('stat').innerHTML='<span class="recdot">● REC</span>'+(retake?' retake':'');document.body.style.boxShadow='inset 0 0 0 3px var(--r)'}
+function stopRec(){if(rec&&rec.state=='recording')rec.stop();setRecUI(false);document.body.style.boxShadow='';$('stat').textContent='Saved'}
+async function saveTake(){const p=paras[idx],blob=new Blob(chunks,{type:rec.mimeType});const t={tid:Date.now()+'_'+Math.random().toString(36).slice(2,6),pid:p.id,blob,dur:(Date.now()-recStart)/1000,ts:Date.now(),best:false};
+ const list=takes[p.id]=takes[p.id]||[];list.forEach(x=>{if(x.best){x.best=false;tx('takes','readwrite',s=>s.put(x))}});t.best=true;list.push(t);await tx('takes','readwrite',s=>s.put(t));render()}
+async function markBest(t){for(const x of takes[t.pid]){x.best=x===t;await tx('takes','readwrite',s=>s.put(x))}render()}
+function play(t){if(player){player.pause();player=null;return}player=new Audio(URL.createObjectURL(t.blob));player.onended=()=>player=null;player.play()}
+function bestOf(pid){const l=takes[pid]||[];return l.find(x=>x.best)||l[l.length-1]}
+async function roomTone(){if(!stream)return toast('Enable the mic first');toast('Stay silent for 3 seconds...',3500);const m=pickMime(),r=new MediaRecorder(stream,m?{mimeType:m}:{}),c=[];r.ondataavailable=e=>c.push(e.data);
+ r.onstop=async()=>{const t={tid:'roomtone_'+Date.now(),pid:'__roomtone',blob:new Blob(c,{type:r.mimeType}),dur:3,ts:Date.now(),best:true};(takes.__roomtone||[]).forEach(x=>tx('takes','readwrite',s=>s.delete(x.tid)));takes.__roomtone=[t];await tx('takes','readwrite',s=>s.put(t));toast('Room tone saved')};r.start();setTimeout(()=>r.stop(),3000)}
+// ---------- WAV / ZIP ----------
+async function decode48(blob){const ab=await blob.arrayBuffer();await unlockAudio();const buf=await new Promise((ok,no)=>{const r=ctx.decodeAudioData(ab,ok,no);if(r&&r.then)r.then(ok,no)});
+ const len=Math.max(1,Math.ceil(buf.duration*48000)),oc=new (window.OfflineAudioContext||window.webkitOfflineAudioContext)(1,len,48000),s=oc.createBufferSource();s.buffer=buf;s.connect(oc.destination);s.start();return (await oc.startRendering()).getChannelData(0)}
+function wav(f){const n=f.length,b=new ArrayBuffer(44+n*2),v=new DataView(b);const w=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
+ w(0,'RIFF');v.setUint32(4,36+n*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,48000,true);v.setUint32(28,96000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);
+ for(let i=0;i<n;i++){const s=Math.max(-1,Math.min(1,f[i]));v.setInt16(44+i*2,s<0?s*32768:s*32767,true)}return new Uint8Array(b)}
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c}return t})();
+function crc(d){let c=~0;for(let i=0;i<d.length;i++)c=CRC[(c^d[i])&255]^(c>>>8);return ~c>>>0}
+function zip(files){// store-only zip, Zip64 not supported (keep under 4 GB)
+ const parts=[],cen=[];let off=0;const enc=new TextEncoder();
+ for(const f of files){const nm=enc.encode(f.name),d=f.data,c=crc(d),h=new DataView(new ArrayBuffer(30));h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint32(14,c,true);h.setUint32(18,d.length,true);h.setUint32(22,d.length,true);h.setUint16(26,nm.length,true);
+  parts.push(h.buffer,nm,d);const cd=new DataView(new ArrayBuffer(46));cd.setUint32(0,0x02014b50,true);cd.setUint16(4,20,true);cd.setUint16(6,20,true);cd.setUint32(16,c,true);cd.setUint32(20,d.length,true);cd.setUint32(24,d.length,true);cd.setUint16(28,nm.length,true);cd.setUint32(42,off,true);cen.push(cd.buffer,nm);off+=30+nm.length+d.length}
+ let cl=0;cen.forEach(x=>cl+=x.byteLength);const e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cl,true);e.setUint32(16,off,true);
+ return new Blob([...parts,...cen,e.buffer],{type:'application/zip'})}
+async function deliver(blob,name){const f=new File([blob],name,{type:'application/zip'});
+ if(navigator.canShare&&navigator.share&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:name});return}catch(e){if(e.name=='AbortError')return}}
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000)}
+const slug=s=>s.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,40)||'section';
+async function exportZip(){const rec=paras.filter(p=>bestOf(p.id));if(!rec.length)return toast('Nothing recorded yet');const gap=parseFloat(prompt('Gap between paragraphs in the combined file (seconds):','0.6'))||0;
+ const NAME='narration_'+new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')+'.zip';const files=[],all=[],man={exported:new Date().toISOString(),sampleRate:48000,gapSeconds:gap,paragraphs:[]};let tone=null;
+ if(bestOf('__roomtone')){tone=await decode48(bestOf('__roomtone').blob);files.push({name:'000_roomtone.wav',data:wav(tone)})}
+ const gapN=Math.round(gap*48000);let i=0;
+ for(const p of paras){i++;const b=bestOf(p.id);const e={n:i,id:p.id,section:p.section,text:p.text,takes:(takes[p.id]||[]).map((t,k)=>({take:k+1,tid:t.tid,seconds:+t.dur.toFixed(2),best:t===b,recorded:new Date(t.ts).toISOString()}))};man.paragraphs.push(e);if(!b)continue;
+  $('stat').textContent='Converting '+i+'/'+paras.length;const f=await decode48(b.blob);const name=String(i).padStart(3,'0')+'_'+slug(p.section)+'.wav';e.file=name;files.push({name,data:wav(f)});
+  if(all.length&&gapN){const g=new Float32Array(gapN);if(tone)for(let k=0;k<gapN;k++)g[k]=tone[k%tone.length];all.push(g)}all.push(f)}
+ const tot=all.reduce((a,x)=>a+x.length,0),comb=new Float32Array(tot);let o=0;all.forEach(x=>{comb.set(x,o);o+=x.length});
+ files.push({name:'combined.wav',data:wav(comb)});files.push({name:'manifest.json',data:new TextEncoder().encode(JSON.stringify(man,null,2))});
+ const z=zip(files);if(isSafari&&navigator.share){toast('Export ready');await new Promise(ok=>{const b=document.createElement('button');b.textContent='Tap to save ZIP';b.style.cssText='position:fixed;inset:auto 20px 160px 20px;z-index:9;min-height:60px;background:var(--a);color:#000';b.onclick=async()=>{b.remove();await deliver(z,NAME);ok()};document.body.appendChild(b)});$('stat').textContent='Exported '+rec.length+' paragraphs';return}
+ await deliver(z,NAME);$('stat').textContent='Exported '+rec.length+' paragraphs'}
+// ---------- Wiring ----------
+$('bLoad').onclick=()=>{$('modal').style.display='flex';$('ta').focus()};$('bCancel').onclick=()=>$('modal').style.display='none';
+$('bOk').onclick=()=>{$('modal').style.display='none';setScript(parse($('ta').value))};$('bFile').onclick=()=>$('file').click();
+$('file').onchange=async e=>{const f=e.target.files[0];if(f)setScript(parse(await f.text()));e.target.value=''};
+$('bMic').onclick=enableMic;
+const tap=(id,f)=>$(id).addEventListener('click',e=>{e.preventDefault();unlockAudio();f()});
+tap('tRec',()=>rec&&rec.state=='recording'?stopRec():startRec(false));tap('tRet',retake);tap('tPrev',()=>go(idx-1));tap('tNext',()=>go(idx+1));tap('tPlay',playCur);tap('tBest',cycleBest);
+tap('bList',()=>document.body.classList.toggle('list'));
+function retake(){if(rec&&rec.state=='recording'){rec.onstop=null;rec.stop();setRecUI(false);setTimeout(()=>startRec(true),150)}else startRec(true)}
+function playCur(){const b=paras[idx]&&bestOf(paras[idx].id);b?play(b):toast('No take yet')}
+function cycleBest(){const l=paras[idx]&&takes[paras[idx].id];if(l&&l.length){const c=l.findIndex(x=>x.best);markBest(l[(c+1)%l.length])}}$('dev').onchange=()=>stream&&enableMic();$('bTone').onclick=roomTone;$('bExp').onclick=()=>exportZip().catch(e=>toast('Export failed: '+e.message));
+$('fs').oninput=()=>{kvSet('fs',$('fs').value);render()};
+$('bClear').onclick=async()=>{if(!confirm('Delete ALL takes and the script? Export first if unsure.'))return;await tx('takes','readwrite',s=>s.clear());await tx('kv','readwrite',s=>s.clear());takes={};paras=[];render();$('cur').textContent='Load a script to begin.'};
+document.addEventListener('keydown',e=>{if($('modal').style.display=='flex'||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)&&e.target.type!='range')return;const k=e.key;
+ if(k==' '){e.preventDefault();rec&&rec.state=='recording'?stopRec():startRec(false)}else if(k=='r'||k=='R')retake()
+ else if(k=='ArrowRight'){e.preventDefault();go(idx+1)}else if(k=='ArrowLeft'){e.preventDefault();go(idx-1)}else if(k=='p'||k=='P')playCur()
+ else if(k=='b'||k=='B')cycleBest()});
+setInterval(()=>{const s=(Date.now()-sessStart)/1000|0;$('tm').textContent=String(s/60|0).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+ if(Date.now()-lastBreak>20*60e3){lastBreak=Date.now();toast('20 minutes in. Time for a short break: water, stretch, rest your voice.',15000)}},1000);
+window.addEventListener('beforeunload',e=>{if(rec&&rec.state=='recording'){e.preventDefault();e.returnValue=''}});
+(async()=>{db=await openDB();paras=await kvGet('script')||[];idx=await kvGet('idx')||0;const fs=await kvGet('fs');if(fs)$('fs').value=fs;
+ const all=await tx('takes','readonly',s=>s.getAll());(all||[]).sort((a,b)=>a.ts-b.ts).forEach(t=>(takes[t.pid]=takes[t.pid]||[]).push(t));if(paras.length)render();
+ let pers=false;try{if(navigator.storage&&navigator.storage.persist)pers=await navigator.storage.persisted()||await navigator.storage.persist()}catch(e){}
+ if(!pers||isSafari)$('warn').style.display='block';
+ // icons + manifest built at runtime so the file stays self-contained
+ const cv=document.createElement('canvas');cv.width=cv.height=180;const g=cv.getContext('2d');g.fillStyle='#0e0f12';g.fillRect(0,0,180,180);g.fillStyle='#e0524a';g.beginPath();g.arc(90,90,46,0,7);g.fill();
+ const png=cv.toDataURL('image/png');$('ico').href=png;$('aico').href=png;
+ $('mani').href='data:application/manifest+json,'+encodeURIComponent(JSON.stringify({name:'Narrator',short_name:'Narrator',display:'standalone',orientation:'portrait',background_color:'#0e0f12',theme_color:'#0e0f12',start_url:location.href.split('#')[0],icons:[{src:png,sizes:'180x180',type:'image/png'}]}));try{await listDevs()}catch(e){}})();
+</script></body></html>
