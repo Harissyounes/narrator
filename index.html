@@ -29,6 +29,10 @@ textarea{width:100%;height:50vh;background:var(--bg);color:var(--t);border:1px s
 @media (pointer:coarse),(max-width:800px){#pad{display:flex}#keys{display:none}#side{display:none}body.list #side{display:block;position:fixed;inset:0 0 140px 0;width:auto;z-index:5;background:var(--bg)}
  #stage{padding:16px 18px}header{padding:calc(6px + env(safe-area-inset-top)) 8px 6px}header button,header select{padding:8px 10px}
  footer{flex-wrap:wrap;gap:8px}#meter{width:100%;order:-1;height:14px}#prog{flex-basis:100%}button{min-height:40px}}
+#cur .w{border-radius:4px;transition:color .15s,background .15s}body.kara #cur .w{color:#8a8d95}body.kara #cur .w.said{color:var(--t)}
+body.kara #cur .w.now{color:#fff;background:#d9a44133}body.kara #cur .w.pace{box-shadow:inset 0 -4px 0 var(--a)}
+#lag{font-weight:bold;min-width:70px}#kset{display:flex;gap:6px;align-items:center;font-size:12px}#kset input[type=range]{width:80px}
+@media (pointer:coarse),(max-width:800px){#kset{flex-wrap:wrap}}
 #toast{position:fixed;top:60px;right:20px;background:var(--a);color:#000;padding:10px 14px;border-radius:8px;display:none;max-width:320px}
 .recdot{color:var(--r);font-weight:bold}
 </style></head><body>
@@ -38,12 +42,15 @@ textarea{width:100%;height:50vh;background:var(--bg);color:var(--t);border:1px s
 <button id="bTone">Room tone 3s</button>
 <label>Size <input type="range" id="fs" min="20" max="80" value="40"></label>
 <button id="bExp">Export ZIP</button><button id="bClear">Clear session</button>
+<span id="kset"><label><input type="checkbox" id="kOn" checked> Karaoke</label><label><input type="checkbox" id="kAsr" checked> Track speech</label>
+<select id="kLang"><option value="en-US">en-US</option><option value="en-GB">en-GB</option><option value="ru-RU">ru-RU</option></select>
+<label>Pace <input type="range" id="kWpm" min="100" max="170" value="125"><span id="kWpmV">125</span> wpm</label></span>
 <button id="bList" class="mob">List</button><span id="stat"></span>
 </header>
 <div id="warn">iPhone/Safari may delete saved takes if storage is not persistent or the app is unused for a while. Export a ZIP after every session.</div>
 <main><div id="side"></div><div id="stage"><div id="sec"></div><div id="cur">Load a script to begin.</div><div id="nxt"></div><div id="takes"></div></div></main>
 <footer><span id="meter"><div id="lvl"></div></span><span id="db">-inf dB</span><span id="clip">CLIPPING</span>
-<span id="prog"><div id="progf"></div></span><span id="pc">0/0</span><span>Session <b id="tm">00:00</b></span>
+<span id="prog"><div id="progf"></div></span><span id="pc">0/0</span><span id="lag"></span><span>Session <b id="tm">00:00</b></span>
 <span id="keys">Space rec/stop · R retake · arrows move · P play · B mark best</span></footer>
 <div id="pad"><button id="tPrev">Prev</button><button id="tRet">Retake</button><button id="tRec" class="">Record</button><button id="tPlay">Play</button><button id="tBest">Best</button><button id="tNext">Next</button></div>
 <div id="modal"><div><p>Paste script. Blank lines split paragraphs. Lines starting with # set the section name. JSON array of {id, section, text} also accepted.</p><textarea id="ta"></textarea><p><button id="bOk">Use script</button> <button id="bCancel">Cancel</button></p></div></div>
@@ -62,7 +69,7 @@ function parse(txt){txt=txt.trim();if(txt.startsWith('[')){try{return JSON.parse
 async function setScript(p){if(!p.length)return toast('No paragraphs found');if(Object.keys(takes).length&&!confirm('Load new script? Existing takes stay stored but are matched by paragraph id.'))return;paras=p;idx=0;await kvSet('script',paras);await kvSet('idx',0);render()}
 // ---------- Render ----------
 function render(){const s=$('side');s.innerHTML='';paras.forEach((p,i)=>{const d=document.createElement('div');const has=(takes[p.id]||[]).length;d.className=(i==idx?'cur ':'')+(has?'ok':'');d.innerHTML='<span class="st"></span><span>'+(i+1)+'. '+esc(p.text.slice(0,60))+'</span>';d.onclick=()=>{go(i);document.body.classList.remove('list')};s.appendChild(d);if(i==idx)setTimeout(()=>d.scrollIntoView({block:'nearest'}))});
- const p=paras[idx];if(!p)return;$('sec').textContent=p.section+' · '+(idx+1)+' / '+paras.length;$('cur').textContent=p.text;$('nxt').textContent=paras[idx+1]?paras[idx+1].text:'(end of script)';
+ const p=paras[idx];if(!p)return;$('sec').textContent=p.section+' · '+(idx+1)+' / '+paras.length;buildWords(p.text);$('nxt').textContent=paras[idx+1]?paras[idx+1].text:'(end of script)';
  const fs=+$('fs').value;$('cur').style.fontSize=fs+'px';$('nxt').style.fontSize=Math.round(fs*.55)+'px';
  const tk=takes[p.id]||[];$('takes').innerHTML=tk.length?'':'<i style="color:var(--d)">Not recorded</i>';tk.forEach((t,i)=>{const e=document.createElement('span');e.className=t.best?'best':'';e.textContent='Take '+(i+1)+' · '+t.dur.toFixed(1)+'s'+(t.best?' · best':'');e.title='Click play, double click mark best';e.onclick=()=>play(t);e.ondblclick=()=>markBest(t);$('takes').appendChild(e)});
  const done=paras.filter(q=>(takes[q.id]||[]).length).length;$('progf').style.width=(paras.length?done/paras.length*100:0)+'%';$('pc').textContent=done+'/'+paras.length}
@@ -86,9 +93,9 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='
 async function unlockAudio(){ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();if(ctx.state!='running')try{await ctx.resume()}catch(e){}}
 function startRec(retake){if(!stream)return toast('Enable the mic first');if(!paras.length)return toast('Load a script first');
  const mt=pickMime();
- rec=new MediaRecorder(stream,mt?{mimeType:mt,audioBitsPerSecond:256000}:{});chunks=[];rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);rec.onstop=saveTake;rec.start(1000);recStart=Date.now();setRecUI(true);
+ rec=new MediaRecorder(stream,mt?{mimeType:mt,audioBitsPerSecond:256000}:{});chunks=[];rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);rec.onstop=saveTake;rec.start(1000);recStart=Date.now();setRecUI(true);karaokeStart();
  $('stat').innerHTML='<span class="recdot">● REC</span>'+(retake?' retake':'');document.body.style.boxShadow='inset 0 0 0 3px var(--r)'}
-function stopRec(){if(rec&&rec.state=='recording')rec.stop();setRecUI(false);document.body.style.boxShadow='';$('stat').textContent='Saved'}
+function stopRec(){karaokeStop();if(rec&&rec.state=='recording')rec.stop();setRecUI(false);document.body.style.boxShadow='';$('stat').textContent='Saved'}
 async function saveTake(){const p=paras[idx],blob=new Blob(chunks,{type:rec.mimeType});const t={tid:Date.now()+'_'+Math.random().toString(36).slice(2,6),pid:p.id,blob,dur:(Date.now()-recStart)/1000,ts:Date.now(),best:false};
  const list=takes[p.id]=takes[p.id]||[];list.forEach(x=>{if(x.best){x.best=false;tx('takes','readwrite',s=>s.put(x))}});t.best=true;list.push(t);await tx('takes','readwrite',s=>s.put(t));render()}
 async function markBest(t){for(const x of takes[t.pid]){x.best=x===t;await tx('takes','readwrite',s=>s.put(x))}render()}
@@ -96,6 +103,38 @@ function play(t){if(player){player.pause();player=null;return}player=new Audio(U
 function bestOf(pid){const l=takes[pid]||[];return l.find(x=>x.best)||l[l.length-1]}
 async function roomTone(){if(!stream)return toast('Enable the mic first');toast('Stay silent for 3 seconds...',3500);const m=pickMime(),r=new MediaRecorder(stream,m?{mimeType:m}:{}),c=[];r.ondataavailable=e=>c.push(e.data);
  r.onstop=async()=>{const t={tid:'roomtone_'+Date.now(),pid:'__roomtone',blob:new Blob(c,{type:r.mimeType}),dur:3,ts:Date.now(),best:true};(takes.__roomtone||[]).forEach(x=>tx('takes','readwrite',s=>s.delete(x.tid)));takes.__roomtone=[t];await tx('takes','readwrite',s=>s.put(t));toast('Room tone saved')};r.start();setTimeout(()=>r.stop(),3000)}
+// ---------- Karaoke ----------
+const K={on:true,asr:true,lang:'en-US',wpm:125};let words=[],sched=[],kRun=false,kT0=0,kPos=0,recog=null,asrBroken=false,kRaf=0;
+const norm=w=>w.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/ё/g,'е').replace(/[^\p{L}\p{N}]/gu,'');
+function syl(w){w=norm(w);if(!w)return 1;if(/^\d+$/.test(w))return Math.max(1,w.length);const m=w.match(/[aeiouyаеиоуыэюяё]+/g);let n=m?m.length:1;if(/[^aeiou]e$/.test(w)&&n>1)n--;return Math.max(1,n)}
+function buildWords(t){const c=$('cur');c.innerHTML='';words=[];t.split(/(\s+)/).forEach(tok=>{if(!tok)return;if(/^\s+$/.test(tok)){c.appendChild(document.createTextNode(tok));return}
+ const sp=document.createElement('span');sp.className='w';sp.textContent=tok;c.appendChild(sp);words.push({el:sp,n:norm(tok),raw:tok})});
+ const tot=words.length*60/K.wpm,ss=words.reduce((a,w)=>a+syl(w.raw),0)||1,k=tot/ss;let t0=0;sched=words.map(w=>{const st=t0;t0+=syl(w.raw)*k+(/[.!?…]["”»)]?$/.test(w.raw)?.45:/[,;:\u2014\u2013-]$/.test(w.raw)?.2:0);return st});kPos=0;paint(-1)}
+function paceIdx(t){let i=0;while(i+1<sched.length&&sched[i+1]<=t)i++;return i}
+function paint(pi){words.forEach((w,i)=>{w.el.classList.toggle('said',i<kPos);w.el.classList.toggle('now',kRun&&i==kPos);w.el.classList.toggle('pace',pi>=0&&i==pi)})}
+function lev(a,b){if(a==b)return 1;const m=a.length,n=b.length;if(!m||!n)return 0;let p=[...Array(n+1).keys()];for(let i=1;i<=m;i++){const q=[i];for(let j=1;j<=n;j++)q[j]=Math.min(p[j]+1,q[j-1]+1,p[j-1]+(a[i-1]==b[j-1]?0:1));p=q}return 1-p[n]/Math.max(m,n)}
+function align(heard){let pos=0;for(const h of heard){if(!h)continue;let best=-1,bs=0;for(let j=pos;j<Math.min(words.length,pos+6);j++){const sc=lev(h,words[j].n)-(j-pos)*.04;if(sc>bs){bs=sc;best=j}}if(best>=0&&bs>=.55)pos=best+1}return pos}
+function karaokeStart(){karaokeStop();if(!K.on||!words.length)return;document.body.classList.add('kara');kRun=true;kT0=performance.now();kPos=0;
+ if(K.asr&&!asrBroken)startAsr();const loop=()=>{if(!kRun)return;const t=(performance.now()-kT0)/1000,pi=paceIdx(t);paint(pi);
+  const tgt=words[recog?Math.min(kPos,words.length-1):pi];if(tgt){const r=tgt.el.getBoundingClientRect(),st=$('stage').getBoundingClientRect();if(r.top<st.top+40||r.bottom>st.bottom-40)tgt.el.scrollIntoView({block:'center',behavior:'smooth'})}
+  if(recog&&kPos>0){const d=(sched[Math.min(kPos,sched.length-1)]+(kPos>=words.length?1:0))-t,a=Math.abs(d);$('lag').textContent=(d>=0?'+':'-')+a.toFixed(1)+'s '+(d>=0?'ahead':'behind');$('lag').style.color=a<2?'var(--g)':a<5?'var(--a)':'var(--r)'}
+  else $('lag').textContent=recog?'listening':'pace only';kRaf=requestAnimationFrame(loop)};loop()}
+function karaokeStop(){kRun=false;cancelAnimationFrame(kRaf);if(recog){const r=recog;recog=null;r.onend=null;try{r.abort()}catch(e){}}if(words.length)paint(-1);$('lag').textContent='';if(!K.on)document.body.classList.remove('kara')}
+function startAsr(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){$('lag').title='Speech recognition unavailable, pace only';return}
+ const r=new SR();r.continuous=true;r.interimResults=true;r.lang=K.lang;r.maxAlternatives=1;let base=[];
+ r.onresult=e=>{const h=[];for(let i=0;i<e.results.length;i++)h.push(...e.results[i][0].transcript.split(/\s+/).map(norm));const np=align(base.concat(h));if(np>kPos)kPos=np};
+ r.onerror=e=>{if(['not-allowed','service-not-allowed','audio-capture'].includes(e.error))asrFail('Speech tracking unavailable ('+e.error+'), using pace only')};
+ r.onend=()=>{if(recog===r&&kRun){base=words.slice(0,kPos).map(w=>w.n);try{r.start()}catch(e){asrFail('Speech tracking stopped, using pace only')}}};
+ try{r.start();recog=r}catch(e){asrFail('Speech tracking failed to start, using pace only')}
+ // conflict guard: if the mic track dies or recorder stalls while recognition runs, drop recognition
+ const tr=stream&&stream.getAudioTracks()[0];if(tr){tr.onended=()=>conflict('ended');tr.onmute=()=>{if(recog)conflict('muted')}}
+ const n0=chunks.length;setTimeout(()=>{if(recog===r&&rec&&rec.state=='recording'&&chunks.length<=n0)conflict('no data')},3500)}
+function asrFail(m){if(recog){const r=recog;recog=null;r.onend=null;try{r.abort()}catch(e){}}asrBroken=true;toast(m)}
+async function conflict(why){asrFail('Speech tracking conflicted with the mic ('+why+'). Turned off for this session, pace only. Please retake this paragraph.');kvSet('asrConflict',true);
+ const tr=stream&&stream.getAudioTracks()[0];if(!tr||tr.readyState=='ended'||tr.muted){if(rec&&rec.state=='recording')stopRec();await enableMic()}}
+function loadK(){$('kOn').checked=K.on;$('kAsr').checked=K.asr;$('kLang').value=K.lang;$('kWpm').value=K.wpm;$('kWpmV').textContent=K.wpm;document.body.classList.toggle('kara',K.on)}
+function saveK(){K.on=$('kOn').checked;K.asr=$('kAsr').checked;K.lang=$('kLang').value;K.wpm=+$('kWpm').value;$('kWpmV').textContent=K.wpm;kvSet('karaoke',K);if(K.asr&&$('kAsr')===document.activeElement){asrBroken=false;kvSet('asrConflict',false)}if(!kRun)render();else document.body.classList.toggle('kara',K.on)}
+['kOn','kAsr','kLang'].forEach(i=>$(i).onchange=saveK);$('kWpm').oninput=saveK;
 // ---------- WAV / ZIP ----------
 async function decode48(blob){const ab=await blob.arrayBuffer();await unlockAudio();const buf=await new Promise((ok,no)=>{const r=ctx.decodeAudioData(ab,ok,no);if(r&&r.then)r.then(ok,no)});
  const len=Math.max(1,Math.ceil(buf.duration*48000)),oc=new (window.OfflineAudioContext||window.webkitOfflineAudioContext)(1,len,48000),s=oc.createBufferSource();s.buffer=buf;s.connect(oc.destination);s.start();return (await oc.startRendering()).getChannelData(0)}
@@ -133,7 +172,7 @@ $('bMic').onclick=enableMic;
 const tap=(id,f)=>$(id).addEventListener('click',e=>{e.preventDefault();unlockAudio();f()});
 tap('tRec',()=>rec&&rec.state=='recording'?stopRec():startRec(false));tap('tRet',retake);tap('tPrev',()=>go(idx-1));tap('tNext',()=>go(idx+1));tap('tPlay',playCur);tap('tBest',cycleBest);
 tap('bList',()=>document.body.classList.toggle('list'));
-function retake(){if(rec&&rec.state=='recording'){rec.onstop=null;rec.stop();setRecUI(false);setTimeout(()=>startRec(true),150)}else startRec(true)}
+function retake(){karaokeStop();if(rec&&rec.state=='recording'){rec.onstop=null;rec.stop();setRecUI(false);setTimeout(()=>startRec(true),150)}else startRec(true)}
 function playCur(){const b=paras[idx]&&bestOf(paras[idx].id);b?play(b):toast('No take yet')}
 function cycleBest(){const l=paras[idx]&&takes[paras[idx].id];if(l&&l.length){const c=l.findIndex(x=>x.best);markBest(l[(c+1)%l.length])}}$('dev').onchange=()=>stream&&enableMic();$('bTone').onclick=roomTone;$('bExp').onclick=()=>exportZip().catch(e=>toast('Export failed: '+e.message));
 $('fs').oninput=()=>{kvSet('fs',$('fs').value);render()};
@@ -145,7 +184,7 @@ document.addEventListener('keydown',e=>{if($('modal').style.display=='flex'||/IN
 setInterval(()=>{const s=(Date.now()-sessStart)/1000|0;$('tm').textContent=String(s/60|0).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
  if(Date.now()-lastBreak>20*60e3){lastBreak=Date.now();toast('20 minutes in. Time for a short break: water, stretch, rest your voice.',15000)}},1000);
 window.addEventListener('beforeunload',e=>{if(rec&&rec.state=='recording'){e.preventDefault();e.returnValue=''}});
-(async()=>{db=await openDB();paras=await kvGet('script')||[];idx=await kvGet('idx')||0;const fs=await kvGet('fs');if(fs)$('fs').value=fs;
+(async()=>{db=await openDB();paras=await kvGet('script')||[];idx=await kvGet('idx')||0;const fs=await kvGet('fs');Object.assign(K,await kvGet('karaoke')||{});if(await kvGet('asrConflict'))asrBroken=true;loadK();if(fs)$('fs').value=fs;
  const all=await tx('takes','readonly',s=>s.getAll());(all||[]).sort((a,b)=>a.ts-b.ts).forEach(t=>(takes[t.pid]=takes[t.pid]||[]).push(t));if(paras.length)render();
  let pers=false;try{if(navigator.storage&&navigator.storage.persist)pers=await navigator.storage.persisted()||await navigator.storage.persist()}catch(e){}
  if(!pers||isSafari)$('warn').style.display='block';
